@@ -1,0 +1,789 @@
+% !TeX program = lualatex
+% !BIB program = biber
+% Lualatex is important to render Fira fonts; with pdflatex it's just the regular one
+% ratio 16:9 -- https://tex.stackexchange.com/questions/14336/
+
+\documentclass[12pt,aspectratio=169,handout]{beamer}
+% \documentclass[12pt,aspectratio=169]{beamer}
+
+
+% adjust for 16:9
+% https://tex.stackexchange.com/questions/354022/modifying-the-margins-of-all-slides-in-beamer
+\setbeamersize{text margin left=0.3cm,text margin right=4.5cm} 
+
+%\usepackage{xcolor}
+
+%%% better TOC
+\usetheme[subsectionpage=progressbar]{metropolis}
+
+% name in footer
+\setbeamertemplate{frame numbering}{\insertframenumber ~ | Dr.\ Ivan Habernal}
+
+% blocks with background globally
+\metroset{block=fill}
+
+% adjust the background to be completely white
+\setbeamercolor{background canvas}{bg=white}
+
+% typeset mathematics on serif
+\usefonttheme[onlymath]{serif}
+
+% better bibliography using biber as backend
+\usepackage[natbib=true,backend=biber,style=authoryear-icomp,maxbibnames=30,maxcitenames=9,uniquelist=false,giveninits=true,doi=false,url=false,dashed=false,isbn=false]{biblatex}
+% shared bibliography
+\addbibresource{bibliography.bib}
+% disable "ibid" for repeated citations
+\boolfalse{citetracker}
+
+\definecolor{76abdf}{RGB}{118, 171, 223}
+
+\setbeamercolor{frametitle}{bg=76abdf, fg=white}
+
+\usepackage{xspace}
+
+
+% for derivatives, https://tex.stackexchange.com/a/412442
+\usepackage{physics}
+
+\usepackage{tikz}
+\usetikzlibrary{matrix, positioning}
+\usetikzlibrary{angles,quotes} % for angles
+\usetikzlibrary{backgrounds} % background
+\usetikzlibrary{decorations.pathreplacing} % curly braces
+\usetikzlibrary{calligraphy}
+\usetikzlibrary{calc} % for neural nets
+
+% for plotting functions
+\usepackage{pgfplots}
+\usepgfplotslibrary{dateplot}
+
+% sub-figures
+\usepackage{caption}
+\usepackage{subcaption}
+
+% book tabs
+\usepackage{booktabs}
+
+
+% show TOC at every section start
+\AtBeginSection{
+	\frame{
+		\vspace{2em}
+		\sectionpage
+		\hspace*{2.2em}\begin{minipage}{10cm}
+			\tableofcontents[currentsection]
+		\end{minipage}
+	}
+}
+
+% argmin, argmax
+\usepackage{amsmath}
+\DeclareMathOperator*{\argmax}{arg\!\max}
+\DeclareMathOperator*{\argmin}{arg\!\min}
+
+% bold math
+\usepackage{bm}
+
+% algorithms
+\usepackage[noend]{algpseudocode}
+
+
+\title{EACL 2023 Tutorial on Privacy-Preserving NLP}
+\subtitle{Block 2a, Part 1: Defence with formal guarantees}
+\date{May 6, 2023}
+\author{Dr.\ Ivan Habernal}
+\institute{Trustworthy Human Language Technologies  \hfill \includegraphics[height=.8cm]{img/logo-trusthlt.pdf} \\
+Department of Computer Science\\
+Technical University of Darmstadt \hfill \texttt{www.trusthlt.org} }
+%\titlegraphic{\hfill }
+
+\begin{document}
+
+\maketitle
+
+
+% This block will introduce differential privacy, a mathematical framework for privacy protection \citep{Dwork.Roth.2013}. We will explain the typical setup (why this privacy approach has `differential' in its title) and the formal definitions. Then we will address some basic DP mechanisms and show their NLP applications. This part will involve a few mathematical proofs, but our aim is to make it low-barrier and accessible to a very broad audience.
+
+\section{Differential privacy: Setup and terminology}
+
+\begin{frame}{Trusted curator and dataset}
+	
+The basic settings: A \textbf{trusted curator} holds a \textbf{database} or \textbf{dataset} (i.e., a table) where
+
+\begin{itemize}
+	\item Each entry is linked to a single person
+	\item Each person in the dataset is linked to a single entry
+\end{itemize}
+
+In other words, the rows are completely independent
+
+\begin{table}
+	\begin{tabular}{lrll}
+		\toprule
+		Name & Income & Last facebook post & ... \\
+		\midrule
+		Alice & 60,000 & "I hate my job, ..." & ... \\
+		Bob & 90,000 & "Spending time with my ..." & ...\\
+		... & ... & ... & ...\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\end{frame}
+
+\begin{frame}{Datasets formally}
+	
+\begin{table}
+	\begin{tabular}{lrll}
+		\toprule
+		Name & Income & Last facebook post & ... \\
+		\midrule
+		Alice & 60,000 & "I hate my job, ..." & ... \\
+		Bob & 90,000 & "Spending time with my ..." & ...\\
+		... & ... & ... & ...\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\begin{block}{Dataset $x$ with $n$ individuals as a $n$-tuple}
+$$
+x = (x_1, x_2, \ldots, x_n)
+$$
+\end{block}
+
+Note: Many different notations, e.g., $D$, $X$, ...
+
+$x_1$ corresponds to Alice, $x_2$ to Bob, etc.
+
+\begin{tikzpicture}[overlay, remember picture] 
+\node at (current page.north east)[anchor = north east, text width=4cm, yshift=-1.3cm] {\scriptsize \fullcite{Vadhan.2017} \par};
+\end{tikzpicture}
+
+\end{frame}
+
+
+\begin{frame}{Neighboring datasets}
+
+\begin{block}{Definition of neighboring datasets}
+Neighboring datasets $x$ and $x'$ differ on one row
+\end{block}
+
+\begin{itemize}
+	\item Variant 1: $x$ and $x'$ have the same size ($|x| = |x'|$), one person is replaced
+	\item Variant 2: $|x'| = |x| \pm 1$, one person is removed or added
+\end{itemize}
+
+
+These two options will not protect the same thing.
+
+\begin{itemize}
+	\item Variant 1: will protect the value of the record
+	\item Variant 2: will also protect the presence of the record in the data
+\end{itemize}
+
+\begin{tikzpicture}[overlay, remember picture] 
+\node at (current page.north east)[anchor = north east, text width=4cm, yshift=-1.3cm] {\scriptsize \fullcite{Desfontaines.Pejo.2020} \par};
+\end{tikzpicture}
+
+
+\end{frame}
+
+
+\begin{frame}{Some examples of neighboring datasets $x$ and $x'$ (Variant 2)}
+	
+\begin{table}
+	\begin{tabular}{lrll}
+		\toprule
+		Alice & 60,000 & "I hate my job, ..." & ... \\
+		Bob & 90,000 & "Spending time with ..." & ...\\
+		Charlie & 50,000 & "Feeling great" & ...\\
+		\bottomrule
+	\end{tabular}
+	\caption{Dataset $x$}
+\end{table}
+\begin{table}
+	\begin{tabular}{lrll}
+		\toprule
+		Bob & 90,000 & "Spending time with ..." & ...\\
+		Charlie & 50,000 & "Feeling great" & ...\\
+		\bottomrule
+	\end{tabular}
+	\caption{Dataset $x'$}
+\end{table}	
+$$|x| = 3, |x'| = 2$$
+\end{frame}
+
+
+\begin{frame}{Some examples of neighboring datasets $x$ and $x'$ (Variant 1)}
+	
+\begin{table}
+	\begin{tabular}{lrll}
+		\toprule
+		Alice & 60,000 & "I hate my job, ..." & ... \\
+		\bottomrule
+	\end{tabular}
+	\caption{Dataset $x$}
+\end{table}
+\begin{table}
+	\begin{tabular}{lrll}
+		\toprule
+		Bob & 90,000 & "Spending time with ..." & ...\\
+		\bottomrule
+	\end{tabular}
+	\caption{Dataset $x'$}
+\end{table}	
+$$|x| = 1, |x'| = 1$$
+
+Note: Dataset of size 1 might look a bit extreme, but it follows the definition and will be useful for local DP.
+
+\end{frame}
+
+
+\begin{frame}{Query}
+An \textbf{analyst} or \textbf{adversary} wants to get information about a dataset $x$
+
+Numerical queries
+\begin{itemize}
+	\item Counting query: $f(x) \to \mathbb{N}$
+	\item Mean query: $f(x) \to \mathbb{R}$
+	\item General numerical query: $f(x) \to \mathbb{R}^k$
+\end{itemize}
+	
+Arbitrary queries
+\begin{itemize}
+	\item $f(x) \to \mathcal{Y}$
+\end{itemize}
+Transformation of the dataset $x$ to any object
+	
+\end{frame}
+
+
+\begin{frame}{Example of numeric queries}
+\begin{table}
+	\begin{tabular}{lrll}
+		\toprule
+		Alice & 60,000 & "I hate my job, ..." & ... \\
+		Bob & 90,000 & "Spending time with ..." & ...\\
+		Charlie & 50,000 & "Feeling great" & ...\\
+		\bottomrule
+	\end{tabular}
+	\caption{Dataset $x$}
+\end{table}	
+
+\begin{itemize}
+	\item Counting query: How many person? $f(x) = 3$
+	\item Mean query: Mean income? $f(x) = 6.667$
+	\item General numerical query: Histogram of word counts in all Facebook posts: $f(x) = \{\text{my}= 5, \text{the} = 4, \ldots\}$
+	\item Arbitrary query: Get copy of Facebook posts $f(x) = (\text{"I hate my job, ..."}, \ldots)$
+\end{itemize}
+
+	
+\end{frame}
+
+\begin{frame}{Further example queries}
+	\begin{table}
+		\begin{tabular}{lrll}
+			\toprule
+			Alice & 60,000 & "I hate my job, ..." & ... \\
+			Bob & 90,000 & "Spending time with ..." & ...\\
+			Charlie & 50,000 & "Feeling great" & ...\\
+			\bottomrule
+		\end{tabular}
+		\caption{Dataset $x$}
+	\end{table}	
+
+\begin{itemize}
+	\item Return Facebook posts $f(x) = (\text{"I hate my job, ..."}, \ldots)$
+	\item Use the income as a predicted variable $y_i$, use the Facebook text of $x_i$ as an input to a given neural network for income prediction, run a forward pass and backprop, and return the gradient: $f(x) = \left( \pdv{E}{w_1} = 0.02, \pdv{E}{w_2} = -24.9, \ldots \right)$
+\end{itemize}
+
+	
+\end{frame}
+
+
+\begin{frame}{Pure differential privacy}
+
+The trusted curator \textbf{randomizes} the query result
+
+\begin{itemize}
+	\item Counting query: How many person? $f(x) = 3 + \text{value drawn from a certain probability distribution}$
+\end{itemize}
+
+This is called a (randomized) \textbf{mechanism} (algorithm) $\mathcal{M}$ (or $\mathcal{M}(f(x))$, $\mathcal{M}(x)$, $\mathcal{M}(f, x)$, etc.)
+
+\begin{block}{What pure differential privacy guarantees ($\varepsilon \geq 0$)}
+For every pair of neighboring datasets $x, x'$ and for any output $y \in \mathcal{Y}$ of $\mathcal{M}$ and query $f$
+$$
+\frac{
+\Pr \left[ \mathcal{M}(f(x)) = y  \right]
+}{
+\Pr \left[ \mathcal{M}(f(x')) = y  \right]
+}
+\leq \exp(\varepsilon)
+$$
+\end{block}
+
+	
+\end{frame}
+
+\begin{frame}{Pure $(\varepsilon, 0)$ differential privacy}
+	
+\begin{block}{What pure differential privacy guarantees ($\varepsilon \geq 0$)}
+	For every pair of neighboring datasets $x, x'$ and for any output $y \in \mathcal{Y}$ of $\mathcal{M}$ and query $f$
+	$$
+	\frac{
+		\Pr \left[ \mathcal{M}(f(x)) = y  \right]
+	}{
+		\Pr \left[ \mathcal{M}(f(x')) = y  \right]
+	}
+	\leq \exp(\varepsilon)
+	$$
+\end{block}
+
+Privately querying a dataset $x$ with Alice and dataset $x'$ without Alice will give me two results --- and probabilities of these two results must be similar up to factor $\exp(\varepsilon)$
+
+Why probabilities $\Pr$? Because of the randomness in $\mathcal{M}$	
+\end{frame}
+
+\section{Basic DP mechanisms}
+
+\begin{frame}{Laplace mechanism for numeric queries}
+
+PDF of the Laplace distribution:
+$$
+\mathrm{Lap}(x; \mu, b) = \frac{1}{2b} \exp \left( - \frac{| x - \mu |}{b} \right)
+$$
+To privatize a query output by adding noise from the Laplace distribution, we need to know the \textbf{scale} $b$.
+
+\begin{block}{Global $\ell_1$ sensitivity $\Delta f$}
+What is the maximum $\ell_1$ difference of the query $f$ for any two neighboring datasets $x, x'$ 
+$$
+\Delta f = \max_{x, x'} | f(x) - f(x')|
+$$
+\end{block}
+	
+\end{frame}
+
+\begin{frame}{Global sensitivity and Laplace mechanism}
+
+\begin{example}
+Sensitivity of the counting query $\Delta f = 1$
+\end{example}
+
+The scale $b$ of the Laplace noise is then proportional to the sensitivity and privacy budget $\varepsilon$:
+$$
+b = \frac{\Delta f}{\varepsilon}
+$$
+
+
+\begin{block}{The Laplace mechanism}
+$$
+\mathcal{M_{\mathrm{Lap}}}(f(x)) = f(x) + z \qquad
+z \sim \textrm{Lap}(\mu = 0; b = \Delta f / \varepsilon)
+$$
+\end{block}
+
+\end{frame}
+
+
+\begin{frame}{Example of the Laplace mechanism for a counting query}
+
+Laplace mechanism satisfies $(\varepsilon)$-DP\footnote{
+Step-by-step proof at	https://blog.ivanhabernal.com/2020-11-10-detailed-proof-of-laplace-mechanism-in-differential-privacy.html}
+
+\begin{figure}
+	\begin{tikzpicture}
+	
+	\begin{axis}[
+	xmin = -5, xmax = 5,
+	ymin = 0, ymax = 0.5,
+	xtick distance = 5,
+	ytick distance = 0.5,
+	grid = both,
+	minor tick num = 5,
+	major grid style = {lightgray},
+	minor grid style = {lightgray!25},
+	width = 0.9\textwidth,
+	height = 0.30\textwidth,
+	legend pos = north west
+	]
+	
+	\addplot[
+	domain = -5:5,
+	samples = 200,
+	smooth,
+	thick,
+	blue,
+	] {(1/2*1) * exp( - abs(x) / 1)};
+	
+		\addplot[
+	domain = -5:5,
+	samples = 200,
+	smooth,
+	thick,
+	red,
+	] {(1/2*1) * exp( - abs(x - 0.88) / 1)}; % no idea why x-1 produces a wrong plot :(
+	
+	\end{axis}
+	\end{tikzpicture}
+	\caption{Laplace PDFs for two means: $0$ and $1$ corresponding to the max difference of two datasets for counting queries with $\Delta f = 1$. Plotted for $\varepsilon = 1.0$.}
+\end{figure}
+
+
+
+\end{frame}
+
+\begin{frame}{Exponential mechanism for discrete outputs}
+
+Given some arbitrary range (set) $\mathcal{R}$, the \textbf{exponential mechanism} is defined to some utility function $u: x \times \mathcal{R} \to \mathbb{R}$, which maps database/output pairs to utility scores
+
+\begin{example}
+$x$ is a word, $\mathcal{R}$ is a set of words, the utility $u$ is some similarity or word $x$ and words in $\mathcal{R}$, e.g., a similarity of word embeddings (the higher, the better)
+\end{example}
+
+We prefer that the mechanism outputs some element of $\mathcal{R}$ with the maximum possible utility score
+
+
+\begin{tikzpicture}[overlay, remember picture] 
+\node at (current page.north east)[anchor = north east, text width=4cm, yshift=-1.3cm] {\scriptsize Sampling from soft-max in language generation: \fullcite{Mattern.et.al.2022.Findings} \par};
+\end{tikzpicture}
+
+\end{frame}
+
+\begin{frame}{Exponential mechanism is $\varepsilon$-DP}
+Sensitivity of the utility score $\Delta u$ is defined
+$$
+\Delta u = \max_{\forall r \in \mathcal{R}, x, x'} |u(x, r) - u(y, r)|
+$$
+
+The exponential mechanism\footnote{
+For a step-by-step proof see https://blog.ivanhabernal.com/2021-06-30-detailed-proof-of-exponential-mechanism.html
+} $\mathcal{M}_E(x, u, \mathcal{R})$ selects and outputs an element $r \in \mathcal{R}$ with probability proportional to
+$$\exp \left( \frac{\varepsilon \cdot u(x,r)}{2\Delta u}\right)$$
+
+\end{frame}
+
+\section{Approximate DP}
+
+\subsection{Pure and approximate DP}
+
+\begin{frame}{Privacy loss random variable}
+\begin{block}{Recall: Definition of pure differential privacy}
+$$
+\frac{
+	\Pr \left[ \mathcal{M}(f(x)) = y  \right]
+}{
+	\Pr \left[ \mathcal{M}(f(x')) = y  \right]
+}
+\leq \exp(\varepsilon)
+$$	
+\end{block}
+The mechanism $\mathcal{M}(f(x))$ is in fact a \textbf{random variable} parametrized by the query $f$ and the dataset $x$, and as such it has a certain \textbf{probability distribution}
+
+\begin{block}{We define the \textbf{privacy loss random variable} $L_{(\mathcal{M}(f(x)) \| \mathcal{M}(f(x')))}^{(y)}$ as a function of $\mathcal{M}(f(x))$}
+$$
+L_{(\mathcal{M}(f(x)) \| \mathcal{M}(f(x')))}^{(y)} =
+\ln \left(
+\frac{
+	\Pr \left[ \mathcal{M}(f(x)) = y  \right]
+}{
+	\Pr \left[ \mathcal{M}(f(x')) = y  \right]
+}
+\right)
+\leq \varepsilon
+$$
+\end{block}
+
+
+
+\begin{tikzpicture}[overlay, remember picture] 
+\node at (current page.north east)[anchor = north east, text width=4cm, yshift=-1.3cm] {\scriptsize \fullcite{Bun.Steinke.2016} \par};
+\end{tikzpicture}
+
+\end{frame}
+
+\begin{frame}{From pure $(\varepsilon, 0)$-DP to approximate $(\varepsilon, \delta)$-DP}
+
+\begin{block}{Privacy loss random variable $L_{(\mathcal{M}(f(x)) \| \mathcal{M}(f(x')))}^{(y)}$, or simply $L$}
+$$
+L =
+\ln \left(
+\frac{
+	\Pr \left[ \mathcal{M}(f(x)) = y  \right]
+}{
+	\Pr \left[ \mathcal{M}(f(x')) = y  \right]
+}
+\right)
+\leq \varepsilon
+\quad \iff \quad
+\Pr \left[ L \leq \varepsilon \right] = 1
+$$
+The random variable $L$ is strictly bounded by $\varepsilon$ value
+\end{block}
+
+\begin{figure}
+	\includegraphics[width=6cm]{img/loss1.pdf}
+	% generated by this public Colab:  https://colab.research.google.com/drive/1hAYT-rVlOELo_aGG7Ql63X8DcI7Xu9Um?usp=sharing
+	\caption{Example distribution of privacy loss random variable for counting query with Laplace mechanism and $\varepsilon = 2$ ($x$-axis)}
+\end{figure}
+
+
+
+\end{frame}
+
+\begin{frame}{From pure $(\varepsilon, 0)$-DP to approximate $(\varepsilon, \delta)$-DP}
+	
+\begin{block}{Pure $(\varepsilon, 0)$-DP}
+$$
+\Pr \left[ L \leq \varepsilon \right] = 1
+$$
+\end{block}
+
+Pure $(\varepsilon, 0)$-DP is very strict. Let's add some relaxation with a `cryptographically' small $\delta \approx 10^{-6}$
+
+\begin{block}{Approximate $(\varepsilon, \delta)$-DP}
+$$
+\Pr \left[ L \leq \varepsilon \right] = 1 - \delta
+\quad
+\iff
+\quad
+\Pr \left[ L \geq \varepsilon \right] = \delta
+$$
+Privacy loss random variable now can have `tails' beyond $\varepsilon$, but they must remain `small'
+\end{block}
+	
+\end{frame}
+
+\begin{frame}{The Gaussian mechanism for $(\varepsilon, \delta)$-DP}
+Global sensitivity now uses the Euclidian ($\ell_2$) norm:
+$$
+\Delta f = \max_{x, x'} \| f(x) - f(x') \|
+$$
+
+\begin{block}{The Gaussian mechanism}
+$$
+\mathcal{M_{\mathrm{Gaus}}}(f(x)) = f(x) + z \qquad
+z \sim \mathcal{N}(0; \sigma^2 I)
+$$
+\end{block}
+
+The `classical' Gaussian mechanism for $\varepsilon \leq 1$ (!!) and $\delta \in (0, 1)$:
+$$
+\sigma = \frac{\Delta}{\varepsilon} \sqrt{2 \ln \left( \frac{1.25}{\delta}\right)}
+$$
+
+\begin{tikzpicture}[overlay, remember picture] 
+\node at (current page.north east)[anchor = north east, text width=4cm, yshift=-1.3cm] {\scriptsize Proof in Appendix B of \fullcite{Dwork.Roth.2013} \par};
+\end{tikzpicture}
+
+\end{frame}
+
+
+\begin{frame}{Revisiting the Gaussian mechanism for any $\varepsilon$ value}
+	
+\begin{block}{The Analytic Gaussian mechanism}
+	$$
+	\mathcal{M_{\mathrm{Gaus}}}(f(x)) = f(x) + z \qquad
+	z \sim \mathcal{N}(0; \sigma^2 I)
+	$$
+\end{block}
+
+Where
+\begin{itemize}
+	\item $\sigma$ satisfies certain inequality \citep[Eq.~6]{Balle.Wang.2018.ICML}
+	\item Computed numerically using the error function of the Gaussian \citep[Algorithm 1]{Balle.Wang.2018.ICML}
+\end{itemize}
+	
+	
+\begin{tikzpicture}[overlay, remember picture] 
+\node at (current page.north east)[anchor = north east, text width=4cm, yshift=-1.3cm] {\scriptsize \fullcite{Balle.Wang.2018.ICML} \par};
+\end{tikzpicture}
+	
+\end{frame}
+
+\subsection{Composition}
+
+\begin{frame}{Running several mechanisms on the same data}
+
+Composition theorems: Running the same or various privacy mechanisms on the same data
+
+\begin{block}{Basic composition --- ``epsilons and deltas add up"}
+For $k \in \mathbb{N}$, the composition of $k$ mechanisms (each of them is $(\varepsilon, \delta)$-DP) gives $(k \varepsilon, k \delta)$-DP
+\end{block}
+
+$k$-fold adaptive composition of an $(\varepsilon, \delta)$-DP mechanism
+	
+\begin{block}{Advanced composition --- using smaller overall budget}
+For $\delta' > 0$ and
+$\varepsilon' = \varepsilon \sqrt{2 k \ln( 1 / \delta')} + k \varepsilon ( \exp(\varepsilon) - 1)$
+the composite mechanism is $(\varepsilon', k \delta + \delta')$-DP
+\end{block}
+
+\begin{tikzpicture}[overlay, remember picture] 
+\node at (current page.north east)[anchor = north east, text width=4cm, yshift=-1.3cm] {\scriptsize Theorem III.3 in \fullcite{Dwork.et.al.2010.FOCS} \par};
+\end{tikzpicture}
+
+\end{frame}
+
+\section{Some application of differential privacy in NLP}
+
+\subsection{Publishing models trained with DP}
+
+\begin{frame}{Stochastic graident descent with differential privacy}
+
+Setup: A set of labeled i.i.d.\ examples --- like tabular data (each example = single person)
+
+Privacy `accountant' --- utilizes composition of DP
+\begin{itemize}
+	\item Computes the privacy cost at each access to the training data (gradient computation)
+	\item Accumulates this cost as the training progresses
+\end{itemize}
+
+Tightest privacy by numerical integration to get bounds on the \textbf{moment generating function} of the \textbf{privacy loss random variable} for all moments $\leq 32$
+
+\begin{tikzpicture}[overlay, remember picture] 
+\node at (current page.north east)[anchor = north east, text width=4cm, yshift=-1.3cm] {\scriptsize \fullcite{Abadi.et.al.2016.SIGSAC} \par};
+\end{tikzpicture}
+
+
+\end{frame}
+
+
+\begin{frame}{DP-SGD algorithm}
+	
+\begin{minipage}[t][10cm][t]{15cm}
+
+\begin{algorithmic}[1]
+\Function{DP-SGD}{$f(\bm{x}; \Theta)$, $(\bm{x}_1, \ldots, \bm{x}_n)$, $|L|$ --- `lot' size, $T$ --- \# of steps}
+\For{$t \in (1, 2, \ldots, T)$}
+\State Add each training example to a `lot' $L_t$ with probability $|L|/n$
+\For{each example in the `lot' $\bm{x}_i \in L_t$}
+\State $\bm{g}(\bm{x}_i) \gets \nabla \mathcal{L} (\theta_t, \bm{x}_i)$
+\Comment{Compute gradient}
+\State
+$\bar{\bm{g}}(\bm{x}_i) \gets \bm{g}(\bm{x}_i) / \max \left(1 , \|  \bm{g}(\bm{x}_i) \| / C \right)
+$
+\Comment{Clip gradient}
+\State $\tilde{\bm{g}}(\bm{x}_i) \gets \bar{\bm{g}}(\bm{x}_i) + \mathcal{N}(0, \sigma^2 C^2 \bm{I})$
+\Comment{Add noise}
+\EndFor
+\State $\hat{\bm{g}} \gets \frac{1}{|L|} \sum_{k = 1}^{|L|} \tilde{\bm{g}}(\bm{x}_k)$
+\Comment{Gradient estimate of `lot' by averaging}
+\State $\Theta_{t + 1} \gets \Theta_t - \eta_t \hat{\bm{g}}$
+\Comment{Update parameters by gradient descend}
+\EndFor
+\State \Return $\Theta$
+\EndFunction
+\end{algorithmic}
+
+\end{minipage}
+	
+\end{frame}
+
+\begin{frame}{Applications of DP-SGD in NLP}
+
+De-facto standard treatment of training neural nets with differential privacy
+
+\begin{itemize}
+	\item Private fine-tuning of classifiers
+\end{itemize}
+
+How about LLM pre-training?
+
+\begin{itemize}
+	\item Technically challenging --- per-example clipping computationally prohibitive
+	\item How is the next-word prediction objective compatible with the perspective of `persons = i.i.d.\ rows in a table'?
+\end{itemize}
+
+\end{frame}
+
+\subsection{Synthetic data generation with DP-trained models}
+
+\begin{frame}{Fine-tune generative model to produce synthetic data}
+
+Method: fine-tune generative LM with DP-SGD
+
+\begin{itemize}
+	\item GPT-2 with Opacus (DP), $\varepsilon = 4$
+	\item Yelp reviews, generation conditioned on `control codes' (e.g., review score)
+	\item Downstream classification on synthetic data with RoBERTa
+\end{itemize}
+
+%Open question: Are we sure that Yelp reviews were \textbf{not} in the original GPT-2 pre-training?
+
+\begin{tikzpicture}[overlay, remember picture] 
+\node at (current page.north east)[anchor = north east, text width=4cm, yshift=-1.3cm] {\scriptsize \fullcite{Yue.et.al.2022.arXiv} \par};
+\end{tikzpicture}
+\end{frame}
+
+
+\subsection{Data publishing with local differential privacy}
+
+\begin{frame}{No trusted curator scenario (local differential privacy)}
+
+Main idea: Each individual gives already `privatized' version of the example
+
+Privatizing text
+\begin{itemize}
+	\item Convert to a latent vector representation
+	\item Add DP noise
+	\item Decode back to text
+\end{itemize}
+
+Inherent challenges
+\begin{itemize}
+	\item High dimensionality $\to$ very large noise required
+\end{itemize}
+
+Open question: Are meaningful $\varepsilon$ values achievable?
+
+\begin{tikzpicture}[overlay, remember picture] 
+\node at (current page.north east)[anchor = north east, text width=4cm, yshift=-1.3cm] {\scriptsize \fullcite{Igamberdiev.Habernal.2023.arXiv} \par};
+\end{tikzpicture}
+\end{frame}
+
+
+
+\section*{Recap}
+
+\begin{frame}{Take aways}
+	
+\begin{itemize}
+	
+	\item Differential privacy provides formal guarantees with exact probability bounds on the privacy loss
+	\item Fully supervised training with DP-SGD is a go-to option
+	\item LM pre-training, data generation, local DP, word-level privacy, etc.\ are very tricky to get right
+\end{itemize}
+	
+\end{frame}
+
+
+\begin{frame}{License and credits}
+
+	\begin{columns}
+		\begin{column}{0.7\textwidth}
+			Licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+		\end{column}
+		\begin{column}{0.2\textwidth}
+			\includegraphics[width=0.9\linewidth]{img/cc-by-sa-icon.pdf}
+		\end{column}
+	\end{columns}
+	
+	\bigskip
+	
+	Credits
+	
+	\begin{scriptsize}
+		
+		Ivan Habernal
+		
+		Content from ACL Anthology papers licensed under CC-BY \url{https://www.aclweb.org/anthology}
+		
+	\end{scriptsize}
+	
+\end{frame}
+
+
+
+\end{document}
+
